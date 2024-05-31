@@ -4,8 +4,8 @@ out/
 .Ds_Store
 deployments
 .vscode
-lib/
-.github/
+lib
+.github/workflows
 
 # Ignores development broadcast logs
 !/broadcast
