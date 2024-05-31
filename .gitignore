@@ -1,6 +1,11 @@
 # Compiler files
 cache/
 out/
+.Ds_Store
+deployments
+.vscode
+lib/
+.github/
 
 # Ignores development broadcast logs
 !/broadcast
@@ -12,3 +17,4 @@ docs/
 
 # Dotenv file
 .env
+node_modules

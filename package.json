@@ -1,0 +1,13 @@
+{
+  "dependencies": {
+    "@openzeppelin/contracts-upgradeable": "^5.0.2",
+    "@rhinestone/modulekit": "^0.4.2",
+    "@zerodev/ecdsa-validator": "^5.2.3",
+    "@zerodev/sdk": "^5.2.15",
+    "permissionless": "^0.1.30"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.13",
+    "tslib": "^2.6.2"
+  }
+}

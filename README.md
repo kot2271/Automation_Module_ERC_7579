@@ -1,4 +1,4 @@
-## Foundry
+## The project is written using the Foundry toolchain.
 
 **Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
 
@@ -47,8 +47,10 @@ $ anvil
 
 ### Deploy
 
+## Deploy SCA_Factory & SCAImplementation
+
 ```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
+$ forge script script/DeployAndVerify.s.sol:DeployAndVerify --rpc-url $POLYGON_MUMBAI_RPC_URL --private-key $PRIVATE_KEY --broadcast --verify
 ```
 
 ### Cast
