@@ -12,6 +12,13 @@ contract SCAFactory {
     // The address of the SCA implementation contract
     address public immutable implementation;
 
+    /**
+     * @dev The address of the entrypoint for the SCA implementation contract.
+     * This is the address of the contract that the SCA instances will call
+     * when executing workflows.
+     */
+    address public immutable entrypoint;
+
     // Event emitted when a new SCA instance is created
     event CloneCreated(address indexed implementation, address clone);
 
@@ -22,8 +29,9 @@ contract SCAFactory {
      * @dev Constructor for the SCAFactory contract
      * @param _scaImplementation The address of the SCA implementation contract
      */
-    constructor(address _scaImplementation) {
+    constructor(address _scaImplementation, address _entrypoint) {
         implementation = _scaImplementation;
+        entrypoint = _entrypoint;
     }
 
     /**
@@ -104,7 +112,7 @@ contract SCAFactory {
         (bool initSuccess, ) = clone.call(
             abi.encodeWithSignature(
                 "initialize(address,address)",
-                implementationContract,
+                entrypoint,
                 _owner
             )
         );

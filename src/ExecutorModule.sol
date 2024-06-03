@@ -17,9 +17,25 @@ contract ExecutorModule is ERC7579ExecutorBase {
     // Mapping to store the installation data for each account
     mapping(address => InstallData) private installationData;
 
+    /**
+     * @dev Struct to store the installation data for each account.
+     * @param data The data associated with the installation.
+     */
     struct InstallData {
         bytes data;
     }
+
+    /**
+     * @dev Event emitted when a workflow is executed successfully.
+     * @param workflowId The ID of the workflow that was executed.
+     */
+    event StartExecuteWorkflow(uint256 indexed workflowId);
+
+    /**
+     * @dev Error thrown when a workflow execution fails.
+     * @param workflowId The ID of the workflow that failed to execute.
+     */
+    error StartExecuteWorkflowFailed(uint256 workflowId);
 
     /**
      * @dev Constructor for the ExecutorModule
@@ -47,6 +63,32 @@ contract ExecutorModule is ERC7579ExecutorBase {
             "Invalid data for uninstallation"
         );
         delete installationData[msg.sender];
+    }
+
+    /**
+     * @dev Executes a workflow on a vault contract.
+     * @param workflowId The ID of the workflow to be executed.
+     * @param vaultAddress The address of the vault contract.
+     */
+    function startExecuteWorkflow(
+        uint256 workflowId,
+        address vaultAddress
+    ) external {
+        require(initializedAccounts[vaultAddress], "Account not initialized");
+
+        // Call the executeWorkflow function on the sca contract
+        (bool success, ) = vaultAddress.call(
+            abi.encodeWithSelector(
+                bytes4(keccak256("executeWorkflow(uint256)")),
+                workflowId
+            )
+        );
+
+        if (success) {
+            emit StartExecuteWorkflow(workflowId);
+        } else {
+            revert StartExecuteWorkflowFailed(workflowId);
+        }
     }
 
     /**

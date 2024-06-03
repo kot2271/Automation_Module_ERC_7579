@@ -4,10 +4,10 @@ pragma solidity ^0.8.25;
 import {IDittoEntryPoint} from "src/interfaces/IDittoEntryPoint.sol";
 
 /**
- * @title AccessControl
+ * @title AccountAccessControl
  * @dev Provides modifiers for restricting access control to the contract and its entry points.
  */
-contract AccessControl {
+contract AccountAccessControl {
     // Error thrown when the caller is not authorized.
     error AccountAccessControlUnauthorized();
 

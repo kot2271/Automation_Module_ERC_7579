@@ -12,7 +12,7 @@ import {IMSA} from "node_modules/erc7579/src/interfaces/IMSA.sol";
 import "node_modules/erc7579/src/interfaces/IERC7579Module.sol";
 import {ModuleManager} from "node_modules/erc7579/src/core/ModuleManager.sol";
 import {IDittoEntryPoint} from "./interfaces/IDittoEntryPoint.sol";
-import {AccessControl} from "src/core/AccessControl.sol";
+import {AccountAccessControl} from "src/core/AccountAccessControl.sol";
 
 /**
  * @title SCA (Smart Account Contract)
@@ -30,7 +30,7 @@ contract SCA is
     IMSA,
     ExecutionHelper,
     ModuleManager,
-    AccessControl,
+    AccountAccessControl,
     Initializable,
     OwnableUpgradeable,
     UUPSUpgradeable
@@ -76,16 +76,21 @@ contract SCA is
     error WorkflowExecutionFailed();
 
     /**
+     * @dev Error thrown when workflow data is empty
+     */
+    error EmptyWorkflowData();
+
+    /**
      * @dev Initializes the contract with the entrypoint and owner addresses
      * @param _entrypoint The address of the entrypoint for the contract
-     * @param initialOwner The address of the owner of the contract
+     * @param _initialOwner The address of the owner of the contract
      */
     function initialize(
         address _entrypoint,
-        address initialOwner
+        address _initialOwner
     ) public initializer {
-        require(msg.sender == initialOwner, "Only owner can initialize");
-        __Ownable_init(initialOwner);
+        require(msg.sender == _initialOwner, "Only owner can initialize");
+        __Ownable_init(_initialOwner);
         __UUPSUpgradeable_init();
         entrypoint = _entrypoint;
     }
@@ -110,10 +115,15 @@ contract SCA is
     function executeWorkflow(uint256 workflowId) external {
         bytes memory data = workflowsData[workflowId].data;
         if (data.length > 0) {
-            delete workflowsData[workflowId];
-            emit WorkflowExecuted(workflowId);
+            (bool success, ) = address(this).call(data);
+            if (success) {
+                // delete workflowsData[workflowId];
+                emit WorkflowExecuted(workflowId);
+            } else {
+                revert WorkflowExecutionFailed();
+            }
         } else {
-            revert WorkflowExecutionFailed();
+            revert EmptyWorkflowData();
         }
     }
 
@@ -190,7 +200,7 @@ contract SCA is
         uint256 moduleTypeId,
         address module,
         bytes calldata initData
-    ) external payable onlyEntryPointOrSelf_(entrypoint) {
+    ) external payable onlyEntryPoint_(entrypoint) {
         if (!IModule(module).isModuleType(moduleTypeId))
             revert MismatchModuleTypeId(moduleTypeId);
 
@@ -366,6 +376,11 @@ contract SCA is
         if (!success) revert AccountInitializationFailed();
     }
 
+    /**
+     * @dev Internal function to authorize the upgrade of the contract implementation.
+     * Only the owner can call this function.
+     * @param newImplementation The address of the new implementation to be authorized.
+     */
     function _authorizeUpgrade(
         address newImplementation
     ) internal override onlyOwner {

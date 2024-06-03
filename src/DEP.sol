@@ -13,8 +13,13 @@ contract DEP is IDittoEntryPoint {
     // Mapping to store data for each workflow
     mapping(uint256 => Workflow) private workflows;
 
+    // The address of the ExecutorModule contract
+    address public immutable executorModule;
+
     // Constructor of the contract
-    constructor() IDittoEntryPoint() {}
+    constructor(address _executorModule) IDittoEntryPoint() {
+        executorModule = _executorModule;
+    }
 
     /**
      * Records the storage related workflow (SCA)
@@ -47,12 +52,18 @@ contract DEP is IDittoEntryPoint {
             workflows[workflowId].vaultAddress == vaultAddress,
             "Invalid address for workflow"
         );
-        (bool success, ) = vaultAddress.call(
-            abi.encodeWithSignature("executeWorkflow(uint256)", workflowId)
+
+        // Call the execute function in the ExecutorModule
+        (bool success, ) = executorModule.call(
+            abi.encodeWithSignature(
+                "startExecuteWorkflow(uint256,address)",
+                workflowId,
+                vaultAddress
+            )
         );
 
         if (success) {
-            emit WorkflowExecuted(workflowId);
+            emit WorkflowExecutedSuccessfully(workflowId);
         } else {
             revert WorkflowExecFailed(workflowId);
         }

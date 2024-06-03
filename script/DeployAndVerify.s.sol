@@ -5,6 +5,8 @@ import "forge-std/Script.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
 import "src/SCAFactory.sol";
 import "src/SCA.sol";
+import "../src/ExecutorModule.sol";
+import "../src/DEP.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 
 contract DeployAndVerify is Script {
@@ -20,12 +22,20 @@ contract DeployAndVerify is Script {
         // Set the deployer account using the private key
         vm.startBroadcast(deployerPrivateKey);
 
+        // Deployment of the ExecutorModule
+        ExecutorModule executorModule = new ExecutorModule();
+        console.log("ExecutorModule deployed at:", address(executorModule));
+
+        // Deployment of the DEP contract
+        DEP dep = new DEP(address(executorModule));
+        console.log("DEP deployed at:", address(dep));
+
         // Deploy the SCA contract
         scaImplementation = address(new SCA());
         console.log("SCA implementation deployed at:", scaImplementation);
 
         // Deploy the SCAFactory contract with the address of the SCA implementation
-        SCAFactory scaFactory = new SCAFactory(scaImplementation);
+        SCAFactory scaFactory = new SCAFactory(scaImplementation, address(dep));
         console.log("SCAFactory deployed at:", address(scaFactory));
 
         // Verify the contracts on PolygonScan

@@ -26,6 +26,12 @@ interface IDittoEntryPoint {
     event WorkflowExecuted(uint256 indexed workflowId);
 
     /**
+     * @dev Event emitted when a workflow is successfully executed.
+     * @param workflowId The unique identifier for the workflow.
+     */
+    event WorkflowExecutedSuccessfully(uint256 indexed workflowId);
+
+    /**
      * @dev Error thrown when a workflow execution fails.
      * @param workflowId The unique identifier for the workflow.
      */

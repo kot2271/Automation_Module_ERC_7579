@@ -13,25 +13,32 @@ contract SCAFactoryTest is Test {
     SCA sca;
     ExecutorModule executorModule;
     DEP dep;
+    SCA scaAccount;
+    address scaOwner = makeAddr("SCA_OWNER");
 
     //Events
     event ModuleInstalled(uint256 moduleTypeId, address module);
     event DataSaved(uint256 workflowId, bytes data);
-    event WorkflowRegistered(address vaultAddress, uint256 workflowId);
+    event WorkflowRegistered(
+        address indexed vaultAddress,
+        uint256 indexed workflowId
+    );
     event WorkflowExecuted(uint256 workflowId);
 
+    error AccountAccessControlUnauthorized();
+
     function setUp() public {
+        // Deployment of the ExecutorModule
+        executorModule = new ExecutorModule();
+
         // Deployment of the DEP contract
-        dep = new DEP();
+        dep = new DEP(address(executorModule));
 
         // Deployment of the SCA contract
         sca = new SCA();
-        factory = new SCAFactory(address(sca));
+        factory = new SCAFactory(address(sca), address(dep));
         vm.prank(address(factory));
         sca.initialize(address(dep), address(factory));
-
-        // Deployment of the ExecutorModule
-        executorModule = new ExecutorModule();
     }
 
     function testDeployScaAndFactory() public view {
@@ -70,15 +77,23 @@ contract SCAFactoryTest is Test {
             "initializeAccount(bytes)",
             "initData"
         );
-        vm.prank(address(sca));
-        address scaAccount = factory.createAccount(salt, initCode);
+        vm.prank(address(scaOwner));
+        address scaAccountAddress = factory.createAccount(salt, initCode);
+
+        scaAccount = SCA(payable(scaAccountAddress));
 
         // Module connection to SCA
         uint256 moduleTypeId = 2;
         bytes memory initData = abi.encodePacked("install", "data");
 
         vm.prank(address(dep));
-        sca.installModule(moduleTypeId, address(executorModule), initData);
+        scaAccount.installModule(
+            moduleTypeId,
+            address(executorModule),
+            initData
+        );
+
+        assertTrue(executorModule.isInitialized(address(scaAccount)));
 
         // Preservation of automation data in the SCA module
         uint256 workflowId = 1;
@@ -87,26 +102,50 @@ contract SCAFactoryTest is Test {
             workflowId,
             "workflowData"
         );
-        vm.prank(scaAccount);
+        vm.prank(address(scaOwner));
         vm.expectEmit(true, true, true, false);
         emit DataSaved(workflowId, data);
-        (bool success, ) = scaAccount.call(
-            abi.encodeWithSelector(
-                bytes4(keccak256("saveWorkflowData(uint256,bytes)")),
-                workflowId,
-                data
-            )
-        );
-        require(success, "Save workflow_data failed");
+        scaAccount.saveWorkflowData(workflowId, data);
 
         // Registration of the workflow in DEP
-        vm.prank(scaAccount);
+        vm.prank(address(scaAccount));
         dep.registerWorkflow(workflowId);
 
         // Run of the workflow process
-        vm.prank(address(dep));
+        vm.prank(address(scaAccount));
         vm.expectEmit(true, true, true, false);
         emit WorkflowExecuted(workflowId);
-        dep.runWorkflow(scaAccount, workflowId);
+        dep.runWorkflow(address(scaAccount), workflowId);
+    }
+
+    function testFailureInstallModuleInSca() public {
+        // Creating a smart account
+        bytes32 salt = keccak256("salt");
+        bytes memory initCode = abi.encodeWithSignature(
+            "initializeAccount(bytes)",
+            "initData"
+        );
+        vm.prank(address(scaOwner));
+        address scaAccountAddress = factory.createAccount(salt, initCode);
+
+        scaAccount = SCA(payable(scaAccountAddress));
+
+        // Module connection to SCA
+        uint256 moduleTypeId = 2;
+        bytes memory initData = abi.encodePacked("install", "data");
+
+        vm.prank(address(sca));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                bytes4(keccak256("AccountAccessControlUnauthorized"))
+            )
+        );
+        scaAccount.installModule(
+            moduleTypeId,
+            address(executorModule),
+            initData
+        );
+
+        assertFalse(executorModule.isInitialized(address(scaAccount)));
     }
 }
