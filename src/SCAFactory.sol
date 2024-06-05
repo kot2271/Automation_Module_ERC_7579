@@ -4,20 +4,20 @@ pragma solidity ^0.8.25;
 import {LibClone} from "node_modules/solady/src/utils/LibClone.sol";
 import {IMSA} from "node_modules/erc7579/src/interfaces/IMSA.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 
 /**
  * @title SCAFactory contract is a factory that creates instances of the SCA contract
  */
-contract SCAFactory {
+contract SCAFactory is AccessControl {
+    // The constant representing the owner role in access control.
+    bytes32 private constant OWNER_ROLE = keccak256("OWNER_ROLE");
+
     // The address of the SCA implementation contract
     address public immutable implementation;
 
-    /**
-     * @dev The address of the entrypoint for the SCA implementation contract.
-     * This is the address of the contract that the SCA instances will call
-     * when executing workflows.
-     */
-    address public immutable entrypoint;
+    // The address of the owner of the contract
+    address private immutable _owner;
 
     // Event emitted when a new SCA instance is created
     event CloneCreated(address indexed implementation, address clone);
@@ -25,13 +25,17 @@ contract SCAFactory {
     // Error thrown when the initialize function fails
     error InitializeError();
 
+    // Error thrown when the granting of the module installer role fails
+    error GrantRoleError();
+
     /**
      * @dev Constructor for the SCAFactory contract
      * @param _scaImplementation The address of the SCA implementation contract
      */
-    constructor(address _scaImplementation, address _entrypoint) {
+    constructor(address _scaImplementation) {
         implementation = _scaImplementation;
-        entrypoint = _entrypoint;
+        _owner = msg.sender;
+        _grantRole(OWNER_ROLE, _owner);
     }
 
     /**
@@ -59,7 +63,7 @@ contract SCAFactory {
             LibClone.predictDeterministicAddressERC1967(
                 implementation,
                 _salt,
-                address(this)
+                _owner
             );
     }
 
@@ -86,12 +90,16 @@ contract SCAFactory {
         bytes32 salt,
         bytes calldata initCode
     ) public payable virtual returns (address) {
+        require(
+            hasRole(OWNER_ROLE, msg.sender),
+            "SCAFactory: caller is not the owner"
+        );
         bytes32 _salt = _getSalt(salt, initCode);
         (bool alreadyDeployed, address account) = LibClone
             .createDeterministicERC1967(msg.value, implementation, _salt);
 
         if (!alreadyDeployed) {
-            account = _deployImplementation(implementation, address(this));
+            account = _deployImplementation(implementation);
         }
         return account;
     }
@@ -99,25 +107,27 @@ contract SCAFactory {
     /**
      * @dev Deploys a new instance of the SCA implementation contract
      * @param implementationContract The address of the SCA implementation contract
-     * @param _owner The address of the owner of the SCA instance
      * @return The address of the deployed SCA instance
      */
     function _deployImplementation(
-        address implementationContract,
-        address _owner
-    ) internal returns (address) {
+        address implementationContract
+    ) private returns (address) {
         // Clone the implementation contract
         address clone = Clones.clone(implementationContract);
         // call the encoded initializer function call on the clone
         (bool initSuccess, ) = clone.call(
-            abi.encodeWithSignature(
-                "initialize(address,address)",
-                entrypoint,
-                _owner
-            )
+            abi.encodeWithSignature("initialize(address)", address(this))
         );
         if (!initSuccess) {
             revert InitializeError();
+        }
+
+        (bool grantRole, ) = clone.call(
+            abi.encodeWithSignature("grantModuleInstallerRole(address)", _owner)
+        );
+
+        if (!grantRole) {
+            revert GrantRoleError();
         }
 
         // Emit the CloneCreated event

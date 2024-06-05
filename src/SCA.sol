@@ -4,6 +4,7 @@ pragma solidity ^0.8.25;
 import "node_modules/@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "node_modules/erc7579/src/lib/ModeLib.sol";
 import {ExecutionLib} from "node_modules/erc7579/src/lib/ExecutionLib.sol";
 import {ExecutionHelper} from "node_modules/erc7579/src/core/ExecutionHelper.sol";
@@ -33,10 +34,24 @@ contract SCA is
     AccountAccessControl,
     Initializable,
     OwnableUpgradeable,
-    UUPSUpgradeable
+    UUPSUpgradeable,
+    AccessControlUpgradeable
 {
     using ExecutionLib for bytes;
     using ModeLib for ModeCode;
+
+    // The owner role identifier
+    // Only the owner has the right to initialize the contract, grant roles and execute workflows
+    bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
+
+    // The module installer role identifier
+    // Only the module installer has the right to install modules
+    bytes32 private constant MODULE_INSTALLER_ROLE =
+        keccak256("INITIALIZER_ROLE");
+
+    // The payer role identifier
+    // Only the payer has the right to pay for the execution of contracts
+    bytes32 public constant PAYER_ROLE = keccak256("PAYER_ROLE");
 
     // Mapping to store data for each workflow
     mapping(uint256 => DataStorage) private workflowsData;
@@ -48,51 +63,91 @@ contract SCA is
         bytes data;
     }
 
-    // Address of the entrypoint for the contract
-    address public entrypoint;
+    /**
+     * @dev The address of the owner of the contract.
+     * The owner has the right to initialize the contract, grant roles and execute workflows.
+     */
+    address private _owner;
 
     /**
-     * @dev Event emitted when data is saved for a workflow
-     * @param workflowId The ID of the workflow
-     * @param data The data saved for the workflow
+     * @dev Modifier that checks if the caller has the role of module installer.
+     * Only the module installer role has the right to install modules.
      */
-    event DataSaved(uint256 workflowId, bytes data);
+    modifier _OnlyModuleInstaller() {
+        if (!hasRole(MODULE_INSTALLER_ROLE, msg.sender)) {
+            revert OnlyModuleInstallerCanAccess();
+        }
+        _;
+    }
 
     /**
-     * @dev Event emitted when a workflow is executed
-     * @param workflowId The ID of the workflow
+     * @dev Modifier that checks if the caller has the role of owner.
+     * Only the owner has the right to grant roles.
      */
-    event WorkflowExecuted(uint256 workflowId);
-
-    /**
-     * @dev Emitted when an implementation is authorized to be upgraded to.
-     * @param implementation The address of the new implementation that is authorized to be upgraded to.
-     */
-    event UpgradeAuthorized(address implementation);
-
-    /**
-     * @dev Error thrown when a workflow execution fails
-     */
-    error WorkflowExecutionFailed();
-
-    /**
-     * @dev Error thrown when workflow data is empty
-     */
-    error EmptyWorkflowData();
+    modifier _onlyOwner() {
+        if (!hasRole(OWNER_ROLE, msg.sender)) {
+            revert OnlyOwnerCanGrantRole();
+        }
+        _;
+    }
 
     /**
      * @dev Initializes the contract with the entrypoint and owner addresses
-     * @param _entrypoint The address of the entrypoint for the contract
      * @param _initialOwner The address of the owner of the contract
      */
-    function initialize(
-        address _entrypoint,
-        address _initialOwner
-    ) public initializer {
-        require(msg.sender == _initialOwner, "Only owner can initialize");
-        __Ownable_init(_initialOwner);
+    function initialize(address _initialOwner) public initializer {
+        require(
+            msg.sender == _initialOwner,
+            "SCA: Only owner can initialize the contract"
+        );
+        _owner = _initialOwner;
+        __Ownable_init(_owner);
         __UUPSUpgradeable_init();
-        entrypoint = _entrypoint;
+        _grantRole(OWNER_ROLE, _owner);
+        _grantRole(PAYER_ROLE, address(this));
+    }
+
+    /**
+     * @dev Grants the module installer role to the specified account.
+     * @param account The address to grant the module installer role to.
+     */
+    function grantModuleInstallerRole(address account) external _onlyOwner {
+        _grantRole(MODULE_INSTALLER_ROLE, account);
+        emit RoleGrantedSuccessfully(
+            MODULE_INSTALLER_ROLE,
+            account,
+            msg.sender
+        );
+    }
+
+    /**
+     * @dev Registers a workflow in the DEP contract.
+     * @param workflowId The unique identifier of the workflow.
+     * @param dep The address of the DEP contract.
+     */
+    function registerWorkflowInDep(uint256 workflowId, address dep) external {
+        (bool success, ) = dep.call(
+            abi.encodeWithSignature("registerWorkflow(uint256)", workflowId)
+        );
+        if (success) {
+            emit RunWorkflowRegistrationInDep(dep, workflowId);
+        } else {
+            revert RunWorkflowRegistrationFailed(workflowId);
+        }
+    }
+
+    /**
+     * @dev Transfer the specified amount of Ether to the recipient.
+     * @param recipient The address of the recipient.
+     * @param amount The amount of Ether to transfer.
+     */
+    function transfer(address recipient, uint256 amount) external payable {
+        require(
+            hasRole(PAYER_ROLE, msg.sender),
+            "SCA: Only payer can transfer"
+        );
+        require(address(this).balance >= amount, "SCA: Insufficient balance");
+        payable(recipient).transfer(amount);
     }
 
     /**
@@ -133,7 +188,7 @@ contract SCA is
     function execute(
         ModeCode mode,
         bytes calldata executionCalldata
-    ) external payable onlyEntryPointOrSelf_(entrypoint) {
+    ) external payable onlyEntryPointOrSelf {
         CallType callType = mode.getCallType();
 
         if (callType == CALLTYPE_BATCH) {
@@ -200,7 +255,7 @@ contract SCA is
         uint256 moduleTypeId,
         address module,
         bytes calldata initData
-    ) external payable onlyEntryPoint_(entrypoint) {
+    ) external payable _OnlyModuleInstaller {
         if (!IModule(module).isModuleType(moduleTypeId))
             revert MismatchModuleTypeId(moduleTypeId);
 
@@ -221,7 +276,7 @@ contract SCA is
         uint256 moduleTypeId,
         address module,
         bytes calldata deInitData
-    ) external payable onlyEntryPointOrSelf_(entrypoint) {
+    ) external payable onlyEntryPointOrSelf {
         if (moduleTypeId == MODULE_TYPE_VALIDATOR) {
             _uninstallValidator(module, deInitData);
         } else if (moduleTypeId == MODULE_TYPE_EXECUTOR) {
@@ -276,7 +331,7 @@ contract SCA is
         external
         payable
         virtual
-        onlyEntryPoint_(entrypoint)
+        onlyEntryPoint
         payPrefund(missingAccountFunds)
         returns (uint256 validSignature)
     {

@@ -35,7 +35,7 @@ contract DeployAndVerify is Script {
         console.log("SCA implementation deployed at:", scaImplementation);
 
         // Deploy the SCAFactory contract with the address of the SCA implementation
-        SCAFactory scaFactory = new SCAFactory(scaImplementation, address(dep));
+        SCAFactory scaFactory = new SCAFactory(scaImplementation);
         console.log("SCAFactory deployed at:", address(scaFactory));
 
         // Verify the contracts on PolygonScan
