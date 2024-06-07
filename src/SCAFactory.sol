@@ -10,14 +10,11 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
  * @title SCAFactory contract is a factory that creates instances of the SCA contract
  */
 contract SCAFactory is AccessControl {
-    // The constant representing the owner role in access control.
-    bytes32 private constant OWNER_ROLE = keccak256("OWNER_ROLE");
-
     // The address of the SCA implementation contract
     address public immutable implementation;
 
     // The address of the owner of the contract
-    address private immutable _owner;
+    address public immutable _owner;
 
     // Event emitted when a new SCA instance is created
     event CloneCreated(address indexed implementation, address clone);
@@ -35,7 +32,6 @@ contract SCAFactory is AccessControl {
     constructor(address _scaImplementation) {
         implementation = _scaImplementation;
         _owner = msg.sender;
-        _grantRole(OWNER_ROLE, _owner);
     }
 
     /**
@@ -90,16 +86,12 @@ contract SCAFactory is AccessControl {
         bytes32 salt,
         bytes calldata initCode
     ) public payable virtual returns (address) {
-        require(
-            hasRole(OWNER_ROLE, msg.sender),
-            "SCAFactory: caller is not the owner"
-        );
         bytes32 _salt = _getSalt(salt, initCode);
         (bool alreadyDeployed, address account) = LibClone
             .createDeterministicERC1967(msg.value, implementation, _salt);
 
         if (!alreadyDeployed) {
-            account = _deployImplementation(implementation);
+            account = _deployImplementation(implementation, msg.sender);
         }
         return account;
     }
@@ -110,24 +102,21 @@ contract SCAFactory is AccessControl {
      * @return The address of the deployed SCA instance
      */
     function _deployImplementation(
-        address implementationContract
+        address implementationContract,
+        address scaOwner
     ) private returns (address) {
         // Clone the implementation contract
         address clone = Clones.clone(implementationContract);
         // call the encoded initializer function call on the clone
         (bool initSuccess, ) = clone.call(
-            abi.encodeWithSignature("initialize(address)", address(this))
+            abi.encodeWithSignature(
+                "initialize(address,address)",
+                address(this),
+                scaOwner
+            )
         );
         if (!initSuccess) {
             revert InitializeError();
-        }
-
-        (bool grantRole, ) = clone.call(
-            abi.encodeWithSignature("grantModuleInstallerRole(address)", _owner)
-        );
-
-        if (!grantRole) {
-            revert GrantRoleError();
         }
 
         // Emit the CloneCreated event

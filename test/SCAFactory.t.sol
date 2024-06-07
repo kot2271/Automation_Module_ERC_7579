@@ -15,6 +15,7 @@ contract SCAFactoryTest is Test {
     DEP dep;
     SCA scaAccount;
     address scaOwner = makeAddr("SCA_OWNER");
+    address factoryOwner = makeAddr("FACTORY_OWNER");
 
     //Events
     event ModuleInstalled(uint256 moduleTypeId, address module);
@@ -24,14 +25,9 @@ contract SCAFactoryTest is Test {
         uint256 indexed workflowId
     );
     event WorkflowExecuted(uint256 workflowId);
-    event RoleGrantedSuccessfully(
-        bytes32 role,
-        address account,
-        address sender
-    );
 
     // Errors
-    error OnlyModuleInstallerCanAccess();
+    error OnlyOwnerCanAccess();
 
     function setUp() public {
         vm.startPrank(scaOwner);
@@ -44,8 +40,16 @@ contract SCAFactoryTest is Test {
 
         // Deployment of the SCA contract
         sca = new SCA();
+
+        vm.stopPrank();
+
+        vm.startPrank(factoryOwner);
+
+        // Deployment of the SCAFactory
         factory = new SCAFactory(address(sca));
-        sca.initialize(address(scaOwner));
+
+        // Initialization of the SCA
+        sca.initialize(address(factory), address(scaOwner));
 
         vm.stopPrank();
     }
@@ -172,9 +176,7 @@ contract SCAFactoryTest is Test {
 
         vm.prank(address(sca));
         vm.expectRevert(
-            abi.encodeWithSelector(
-                bytes4(keccak256("OnlyModuleInstallerCanAccess"))
-            )
+            abi.encodeWithSelector(bytes4(keccak256("OnlyOwnerCanAccess")))
         );
         scaAccount.installModule(
             moduleTypeId,

@@ -28,18 +28,6 @@ contract AccountAccessControl {
     event UpgradeAuthorized(address implementation);
 
     /**
-     * @dev Event emitted when a role is granted to an account by another account.
-     * @param role The role that was granted.
-     * @param account The account that received the role.
-     * @param sender The account that granted the role.
-     */
-    event RoleGrantedSuccessfully(
-        bytes32 role,
-        address account,
-        address sender
-    );
-
-    /**
      * @dev Event emitted when a workflow is registered in the DEP contract.
      * @param dep The address of the DEP contract.
      * @param workflowId The ID of the workflow that was registered.
@@ -62,52 +50,11 @@ contract AccountAccessControl {
     /**
      * @dev Error thrown when an attempt is made to grant a role by an account other than the owner.
      */
-    error OnlyOwnerCanGrantRole();
-
-    /**
-     * @dev Error thrown when an attempt is made to access a function that is meant to be accessed only by the module installer.
-     */
-    error OnlyModuleInstallerCanAccess();
+    error OnlyOwnerCanAccess();
 
     /**
      * @dev Error thrown when the registration of a workflow in the DEP contract fails
      * @param workflowId The ID of the workflow that failed to be registered
      */
     error RunWorkflowRegistrationFailed(uint256 workflowId);
-
-    /**
-     * @dev Modifier that allows the function to be called only by the entry point or the contract itself.
-     * @param entryPoint Address of the entry point.
-     */
-    modifier onlyEntryPointOrSelf_(address entryPoint) virtual {
-        if (
-            !(msg.sender == getEntryPointAddress(entryPoint) ||
-                msg.sender == address(this))
-        ) {
-            revert AccountAccessControlUnauthorized();
-        }
-        _;
-    }
-
-    /**
-     * @dev Modifier that allows the function to be called only by the entry point.
-     * @param entryPoint Address of the entry point.
-     */
-    modifier onlyEntryPoint_(address entryPoint) virtual {
-        if (msg.sender != getEntryPointAddress(entryPoint)) {
-            revert AccountAccessControlUnauthorized();
-        }
-        _;
-    }
-
-    /**
-     * @dev Returns the address of the entry point.
-     * @param entryPoint Address of the entry point.
-     * @return The address of the entry point.
-     */
-    function getEntryPointAddress(
-        address entryPoint
-    ) public view virtual returns (address) {
-        return address(entryPoint);
-    }
 }

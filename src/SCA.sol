@@ -44,11 +44,6 @@ contract SCA is
     // Only the owner has the right to initialize the contract, grant roles and execute workflows
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
 
-    // The module installer role identifier
-    // Only the module installer has the right to install modules
-    bytes32 private constant MODULE_INSTALLER_ROLE =
-        keccak256("INITIALIZER_ROLE");
-
     // The payer role identifier
     // Only the payer has the right to pay for the execution of contracts
     bytes32 public constant PAYER_ROLE = keccak256("PAYER_ROLE");
@@ -70,54 +65,48 @@ contract SCA is
     address private _owner;
 
     /**
-     * @dev Modifier that checks if the caller has the role of module installer.
-     * Only the module installer role has the right to install modules.
-     */
-    modifier _OnlyModuleInstaller() {
-        if (!hasRole(MODULE_INSTALLER_ROLE, msg.sender)) {
-            revert OnlyModuleInstallerCanAccess();
-        }
-        _;
-    }
-
-    /**
      * @dev Modifier that checks if the caller has the role of owner.
      * Only the owner has the right to grant roles.
      */
     modifier _onlyOwner() {
         if (!hasRole(OWNER_ROLE, msg.sender)) {
-            revert OnlyOwnerCanGrantRole();
+            revert OnlyOwnerCanAccess();
         }
         _;
     }
 
     /**
      * @dev Initializes the contract with the entrypoint and owner addresses
+     * @param _factory The address of the contract factory
      * @param _initialOwner The address of the owner of the contract
      */
-    function initialize(address _initialOwner) public initializer {
-        require(
-            msg.sender == _initialOwner,
-            "SCA: Only owner can initialize the contract"
-        );
+    function initialize(
+        address _factory,
+        address _initialOwner
+    ) public initializer {
+        if (_isContract(msg.sender)) {
+            require(
+                msg.sender == _factory,
+                "SCA: Only factory can initialize the contract"
+            );
+        } else {
+            (bool ok, bytes memory result) = _factory.staticcall(
+                abi.encodeWithSignature("_owner()")
+            );
+            require(ok, "SCA: Getting the owner's address rejected");
+
+            address _factoryOwner = abi.decode(result, (address));
+            require(
+                msg.sender == _factoryOwner,
+                "SCA: Sender is not the owner of the factory"
+            );
+        }
+
         _owner = _initialOwner;
         __Ownable_init(_owner);
         __UUPSUpgradeable_init();
         _grantRole(OWNER_ROLE, _owner);
         _grantRole(PAYER_ROLE, address(this));
-    }
-
-    /**
-     * @dev Grants the module installer role to the specified account.
-     * @param account The address to grant the module installer role to.
-     */
-    function grantModuleInstallerRole(address account) external _onlyOwner {
-        _grantRole(MODULE_INSTALLER_ROLE, account);
-        emit RoleGrantedSuccessfully(
-            MODULE_INSTALLER_ROLE,
-            account,
-            msg.sender
-        );
     }
 
     /**
@@ -158,7 +147,7 @@ contract SCA is
     function saveWorkflowData(
         uint256 workflowId,
         bytes calldata data
-    ) external {
+    ) external _onlyOwner {
         workflowsData[workflowId].data = data;
         emit DataSaved(workflowId, workflowsData[workflowId].data);
     }
@@ -255,7 +244,7 @@ contract SCA is
         uint256 moduleTypeId,
         address module,
         bytes calldata initData
-    ) external payable _OnlyModuleInstaller {
+    ) external payable _onlyOwner {
         if (!IModule(module).isModuleType(moduleTypeId))
             revert MismatchModuleTypeId(moduleTypeId);
 
@@ -445,5 +434,13 @@ contract SCA is
         );
 
         emit UpgradeAuthorized(newImplementation);
+    }
+
+    function _isContract(address addr) private view returns (bool) {
+        uint size;
+        assembly {
+            size := extcodesize(addr)
+        }
+        return size > 0;
     }
 }
